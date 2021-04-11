@@ -3,6 +3,7 @@ namespace QCHack.Task4 {
     open Microsoft.Quantum.Intrinsic;
     open Microsoft.Quantum.Arrays;
     open Microsoft.Quantum.Logical;
+    open Microsoft.Quantum.Diagnostics;
 
     // Task 4 (12 points). f(x) = 1 if the graph edge coloring is triangle-free
     // 
@@ -39,7 +40,7 @@ namespace QCHack.Task4 {
     // Hint: Remember that you can examine the inputs and the intermediary results of your computations
     //       using Message function for classical values and DumpMachine for quantum states.
     //
-    operation MarkDifferentColors(inputs : Qubit[], output : Qubit) : Unit is Adj+Ctl {
+    operation MarkEqualColors(inputs : Qubit[], output : Qubit) : Unit is Adj+Ctl {
         within{
             CNOT(inputs[0],inputs[1]);
             CNOT(inputs[0],inputs[2]);
@@ -48,7 +49,7 @@ namespace QCHack.Task4 {
        apply{
            CCNOT(inputs[1],inputs[2],output);
        }
-       X(output);
+       
     }
 
     function isTriangle( edge1 : (Int, Int), edge2 : (Int, Int), edge3 : (Int, Int)) : Bool{
@@ -60,10 +61,12 @@ namespace QCHack.Task4 {
         let vertices = [start1,start2,start3,stop1,stop2,stop3];
         let un_sort_vertices = Unique(EqualI,Sorted(LessThanOrEqualI,vertices));
 
-
         let size = Length(un_sort_vertices);
 
-        if size == 3 {
+        if size == 3 { 
+    //        Message($"{edge1}");
+      //      Message($"{edge2}");
+        //    Message($"{edge3}");
             return true;
         }
         else{
@@ -82,20 +85,50 @@ namespace QCHack.Task4 {
         mutable triplets = new (Int,Int,Int)[nCombinations];
 
         mutable count = 0;
-
-        let arr_edges = TupleArrayAsNestedArray(edges);
     
         for i in 0..nEdges-3{
             for j in i+1..nEdges-2{
                 for k in j+1..nEdges-1{
                     set triplets w/= count <- (i,j,k);
-
                     set count = count + 1;
                 }
             }
         }
-
         return triplets;
+
+    }
+
+    function TriangleList (trList : (Int,Int,Int)[], edges : (Int, Int)[]) : (Int,Int,Int)[]{
+        
+        let nCombinations = Length(trList);
+        mutable triangleCounter = 0;
+        mutable iftriangle = new Bool[nCombinations];
+        
+        for i in 0..nCombinations-1{
+            let (n1,n2,n3) = trList[i];
+            let sides = (edges[n1],edges[n2],edges[n3]);
+            let boolTriangle = isTriangle(sides);
+            set iftriangle w/= i <- boolTriangle;
+            if(boolTriangle){
+                set triangleCounter = triangleCounter + 1;
+
+            }
+        }   
+
+        mutable trianglelist = new (Int,Int,Int)[triangleCounter];
+        
+        mutable indexCount = 0;
+
+        for i in 0..nCombinations-1{
+            if(iftriangle[i]){
+                set trianglelist w/= indexCount <- trList[i];
+                set indexCount = indexCount+1;
+            }
+            
+
+        }
+                
+        return trianglelist;
 
     }
 
@@ -106,21 +139,31 @@ namespace QCHack.Task4 {
         target : Qubit
     ) : Unit is Adj+Ctl {
         
-        let nEdges = Length(edges);
+        let nEdges = Length(edges); 
 
         let trList = TripletsList(edges);
+        Message("TripletsList done");
+        let triangleList = TriangleList(trList,edges);
+        Message("TriangleList done");
+        let nTriangles = Length(triangleList);
 
-        let nCombinations = Length(trList);
+        use conflictQubits = Qubit[nTriangles];
 
-        mutable iftriangle = new Bool[nCombinations];
 
-        for i in 0..nCombinations-1{
-            let (n1,n2,n3) = trList[i];
-            let sides = (edges[n1],edges[n2],edges[n3]);
-            set iftriangle w/= i <- isTriangle(sides);
+        within{
+            for (sideTuple,conflictQubit) in Zipped(triangleList,conflictQubits){
+                let(side1,side2,side3)=sideTuple;
+
+                MarkEqualColors([colorsRegister[side1],colorsRegister[side2],colorsRegister[side3]],conflictQubit);
+                Message("Filter done");
+            }
+        }
+        apply{
+            (ControlledOnInt(0,X))(conflictQubits, target);
+            Message("Marking done");
         }
 
-        use conflictQubits = Qubit[];
+        Message("All done");
 
 
         
